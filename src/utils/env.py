@@ -79,13 +79,14 @@ SYSTEM_MESSAGE_ENV: str | None = os.getenv("SYSTEM_MESSAGE")
 # --- Heartbeat Configuration ---
 DISABLE_HEARTBEAT_ENV: str = os.getenv("DISABLE_HEARTBEAT", "False")
 
-
+DEFAULT_SYSTEM_INSTRUCTION_ENV: str = os.getenv("SYSTEM_MESSAGE", "RESPOND IN PORTUGUESE. YOU MUST RESPOND UNMISTAKABLY IN PORTUGUESE. START IMMEDIATELY WITH A GREETING. DON'T WAIT FOR THE USER!")
 # --- Exported Variables ---
 # These are the names available for import into other modules.
 __all__ = [
     # App
     "APP_PORT_ENV",
     "DEFAULT_LLM_MODEL_ENV",
+    "DEFAULT_SYSTEM_INSTRUCTION_ENV",
     "DEFAULT_TTS_SPEED_ENV",
     "DEFAULT_VOICE_TTS_ENV",
     "DISABLE_HEARTBEAT_ENV",

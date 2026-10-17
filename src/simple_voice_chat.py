@@ -37,6 +37,8 @@ from fastrtc import (
     SileroVadOptions,
     Stream,
     get_twilio_turn_credentials,
+    get_cloudflare_turn_credentials_async, # noqa
+    get_cloudflare_turn_credentials,
     wait_for_item,  # Added wait_for_item
 )
 from google import genai
@@ -82,6 +84,7 @@ from src.utils.config import (
 from src.utils.env import (
     APP_PORT_ENV,
     DEFAULT_LLM_MODEL_ENV,
+    DEFAULT_SYSTEM_INSTRUCTION_ENV,
     DEFAULT_TTS_SPEED_ENV,
     DEFAULT_VOICE_TTS_ENV,
     DISABLE_HEARTBEAT_ENV,  # Add disable heartbeat env var
@@ -89,7 +92,6 @@ from src.utils.env import (
     GEMINI_CONTEXT_WINDOW_COMPRESSION_THRESHOLD_ENV,  # Add Gemini threshold env var
     GEMINI_MODEL_ENV,  # Add Gemini env var
     GEMINI_VOICE_ENV,  # Add Gemini env var
-    DEFAULT_SYSTEM_INSTRUCTION_ENV,
     LLM_API_KEY_ENV,
     LLM_HOST_ENV,
     LLM_PORT_ENV,
@@ -733,8 +735,8 @@ class GeminiRealtimeHandler(AsyncStreamHandler):
         self.session: genai.live.AsyncLiveConnectSession | None = None
         self._input_audio_queue: asyncio.Queue[bytes] = asyncio.Queue()
         self.output_queue: asyncio.Queue = asyncio.Queue()  # For (sample_rate, np.ndarray) or AdditionalOutputs
-        self.current_stt_language_code = self.settings.current_stt_language # Updated from global settings in main
-        self.current_gemini_voice = self.settings.current_gemini_voice # Updated from global settings in main
+        self.current_stt_language_code = self.settings.current_stt_language  # Updated from global settings in main
+        self.current_gemini_voice = self.settings.current_gemini_voice  # Updated from global settings in main
 
         # State for cost calculation (Gemini Backend - Character based)
         self._current_input_chars: int = 0
@@ -847,17 +849,16 @@ class GeminiRealtimeHandler(AsyncStreamHandler):
             # This check ensures "pt-BR" is not reformatted to "pt-BR-PT-BR"
             # It converts "en" to "en-EN", "es" to "es-ES".
             # The API might need more specific dialects (e.g., "en-US"), which would require more sophisticated mapping or user input.
-            if processed_language_code_for_api.lower() != "pt-br": # Check to ensure "pt-br" is not reformatted.
+            if processed_language_code_for_api.lower() != "pt-br":  # Check to ensure "pt-br" is not reformatted.
                  processed_language_code_for_api = f"{processed_language_code_for_api}-{processed_language_code_for_api.upper()}"
                  logger.info(f"GeminiRealtimeHandler: Formatted 2-letter language code to: {processed_language_code_for_api} for API.")
             else:
                 logger.info(f"GeminiRealtimeHandler: Using language code '{processed_language_code_for_api}' as is for API (e.g. pt-BR).")
 
-
         speech_config_params: dict[str, Any] = {
             "voice_config": GenaiVoiceConfig(
                 prebuilt_voice_config=PrebuiltVoiceConfig(
-                    voice_name=self.current_gemini_voice, # Use the voice set from global settings
+                    voice_name=self.current_gemini_voice,  # Use the voice set from global settings
                 ),
             ),
         }
@@ -901,8 +902,8 @@ class GeminiRealtimeHandler(AsyncStreamHandler):
 
         # Prepare arguments for LiveConnectConfig
         live_connect_config_args: dict[str, Any] = {
-            "response_modalities": self.settings.gemini_response_modalities, # Use from AppSettings
-            "speech_config": GenaiSpeechConfig(**speech_config_params), # Uses updated speech_config_params
+            "response_modalities": self.settings.gemini_response_modalities,  # Use from AppSettings
+            "speech_config": GenaiSpeechConfig(**speech_config_params),  # Uses updated speech_config_params
             "context_window_compression": ContextWindowCompressionConfig(
                 sliding_window=SlidingWindow(),
                 trigger_tokens=self.settings.gemini_context_window_compression_threshold,
@@ -922,7 +923,7 @@ class GeminiRealtimeHandler(AsyncStreamHandler):
         if self.settings.system_message and self.settings.system_message.strip():
             logger.info(f'GeminiRealtimeHandler: Preparing system instruction for LiveConnectConfig: "{self.settings.system_message[:100]}..."')
             system_instruction_content = genai.types.Content(
-                parts=[genai.types.Part(text=self.settings.system_message.strip())], # Ensure no leading/trailing whitespace
+                parts=[genai.types.Part(text=self.settings.system_message.strip())],  # Ensure no leading/trailing whitespace
             )
             live_connect_config_args["system_instruction"] = system_instruction_content
         else:
@@ -1710,12 +1711,12 @@ class OpenAIRealtimeHandler(AsyncStreamHandler):
 
 
 # --- Endpoint Definitions ---
-def register_endpoints(app: FastAPI, stream: Stream):
+def register_endpoints(app: FastAPI, stream: Stream) -> None:
     """Registers FastAPI endpoints."""
     curr_dir = Path(__file__).parent
 
     @app.get("/form.json")
-    async def get_form_json() -> None:
+    async def get_form_json() -> JSONResponse:
         """Serve o arquivo form.json."""
         global form_data
         return JSONResponse(content=form_data)
@@ -2169,7 +2170,6 @@ def register_endpoints(app: FastAPI, stream: Stream):
             return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
         logger.warning(f"TTS audio file not found: {file_path}")
         raise HTTPException(status_code=404, detail="Audio file not found")
-    return None
 
 
 # --- Pywebview API Class ---
@@ -2252,7 +2252,7 @@ def monitor_heartbeat_thread() -> None:
 @click.option(
     "--host",
     type=str,
-    default="127.0.0.1",
+    default="localhost",
     show_default=True,
     help="Host address to bind the FastAPI server to.",
 )
@@ -2360,7 +2360,7 @@ def monitor_heartbeat_thread() -> None:
     help="Context window compression threshold for Gemini backend (if --backend=gemini). (Env: GEMINI_CONTEXT_WINDOW_COMPRESSION_THRESHOLD)",
 )
 @click.option(
-    "--default-system-instruction",
+    "--default-system-instruction_arg",
     type=str,
     envvar="DEFAULT_SYSTEM_INSTRUCTION",
     default=DEFAULT_SYSTEM_INSTRUCTION_ENV,
@@ -2569,7 +2569,7 @@ def main(
     settings.gemini_voice_arg = gemini_voice       # Store Gemini arg
     settings.gemini_api_key = gemini_api_key       # Store Gemini arg
     settings.gemini_context_window_compression_threshold = gemini_compression_threshold  # Store Gemini threshold
-    settings.default_system_instruction = default_system_instruction_arg # Store new arg for AppSettings
+    settings.default_system_instruction = default_system_instruction_arg  # Store new arg for AppSettings
 
     settings.preferred_port = port
     settings.host = host
@@ -2622,7 +2622,7 @@ def main(
         settings.current_stt_language = settings.stt_language_arg
     else:
         logger.info("No STT language specified (or empty), STT will auto-detect initially.")
-        settings.current_stt_language = None # This might be overridden by Gemini specific config below
+        settings.current_stt_language = None  # This might be overridden by Gemini specific config below
 
     # --- Backend Specific Configuration ---
     if settings.backend == "openai":
@@ -2698,7 +2698,7 @@ def main(
             )
             settings.current_llm_model = settings.available_models[0]
         logger.info(f"Gemini Live Model set to: {settings.current_llm_model}")
-        settings.model_cost_data = {} # Cost handled by GeminiRealtimeHandler
+        settings.model_cost_data = {}  # Cost handled by GeminiRealtimeHandler
 
         if not settings.gemini_api_key:
             logger.critical("Gemini API Key (--gemini-api-key or GEMINI_API_KEY env) is REQUIRED for 'gemini' backend. Exiting.")
@@ -2717,7 +2717,7 @@ def main(
                 settings.current_gemini_voice = GEMINI_LIVE_VOICES[0]
             else:
                 logger.error("No Gemini voices available in GEMINI_LIVE_VOICES. Voice may not work.")
-                settings.current_gemini_voice = None # Or handle as critical error
+                settings.current_gemini_voice = None  # Or handle as critical error
         logger.info(f"Initial Gemini voice set to: {settings.current_gemini_voice}")
 
         # If system_message (from CLI/env) is empty, use default_system_instruction
@@ -2742,7 +2742,7 @@ def main(
         if tts_host != TTS_HOST_ENV or tts_port != TTS_PORT_ENV or tts_model != TTS_MODEL_ENV or tts_voice != DEFAULT_VOICE_TTS_ENV or tts_api_key is not None or tts_speed != float(DEFAULT_TTS_SPEED_ENV):
             logger.warning("Classic TTS host/port/model/voice/api-key/speed parameters are ignored when using 'gemini' backend.")
 
-        settings.current_tts_speed = 1.0 # Not user-configurable for Gemini
+        settings.current_tts_speed = 1.0  # Not user-configurable for Gemini
 
     elif settings.backend == "classic":
         logger.info("Configuring for 'classic' backend.")
@@ -3013,7 +3013,7 @@ def main(
             "sampleSize": {"ideal": 16},
             "channelCount": {"exact": 1},
         },
-        rtc_configuration=get_twilio_turn_credentials() if get_space() else None,
+        rtc_configuration=get_twilio_turn_credentials() if get_space() else get_cloudflare_turn_credentials(hf_token=os.getenv('HF_TOKEN')),
         concurrency_limit=5 if get_space() else None,
         time_limit=180 if get_space() else None,
     )

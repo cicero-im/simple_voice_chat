@@ -7,13 +7,13 @@ if __name__ == "__main__":
     # Replace these with your desired configuration
     args = [
         "--backend", "gemini",
-        "--gemini-model", "gemini-2.0-flash-live-001", # Updated to --gemini-model
-        "--gemini-voice", "Aoede", # Updated to --gemini-voice
-        "--stt-language", "pt-BR", # Updated to pt-BR
+        "--gemini-model", "gemini-2.0-flash-live-001",  # Updated to --gemini-model
+        "--gemini-voice", "Aoede",  # Updated to --gemini-voice
+        #"--stt-language", "pt-BR",  # Updated to pt-BR
         "--browser",  # Launch in browser instead of pywebview GUI
         # Add other arguments as needed, like:
         # "--openai-api-key", "YOUR_OPENAI_KEY_HERE", # If using OpenAI backend
-        "--gemini-api-key", os.environ["GOOGLE_API_KEY"], # Assuming GOOGLE_API_KEY is for Gemini
+        "--gemini-api-key", os.environ["GOOGLE_API_KEY"],  # Assuming GOOGLE_API_KEY is for Gemini
         # "--llm-api-key", os.environ["GOOGLE_API_KEY"],    # If classic backend needs a key for LLM
         # "--stt-api-key", "YOUR_STT_KEY_HERE",    # If classic backend STT needs a key
         # "--tts-api-key", "YOUR_TTS_KEY_HERE",    # If classic backend TTS needs a key
